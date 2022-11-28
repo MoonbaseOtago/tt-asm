@@ -1,5 +1,9 @@
+asm4
+asm8
+
 # Prerequisites
 *.d
+*.tab.c
 
 # Object files
 *.o
