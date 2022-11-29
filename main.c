@@ -6,7 +6,11 @@
 
 #define YYDEBUG 1
 
+#ifdef ASM4
 unsigned char code[128];
+#else
+unsigned char code[4096];
+#endif
 int pc=0;
 
 
@@ -127,7 +131,7 @@ process_op(int ins)
 {
 	static int over=0;
 
-	if ((ins&0xf0000) == 0x20000) {
+	if (((ins>>24)&0xf) == 2) {
 		if (pc >= (sizeof(code)-1)) {
 			if (!over) {
 				fprintf(stderr, "%d: ran out of code space\n", line-1);
@@ -143,12 +147,9 @@ process_op(int ins)
 		code[pc++] = ins&0xff;
 		code[pc++] = (ins>>8)&0xff;
 #endif
-	} else {
-#ifdef ASM4
+	} else
+	if (((ins>>24)&0xf) == 3) {
 		if (pc >= (sizeof(code)-2)) {
-#else
-		if (pc >= sizeof(code)) {
-#endif
 			if (!over) {
 				fprintf(stderr, "%d: ran out of code space\n", line-1);
 				errs++;
@@ -162,7 +163,19 @@ process_op(int ins)
 		code[pc++] = (ins>>8)&0xf;
 #else
 		code[pc++] = ins&0xff;
+		code[pc++] = (ins>>8)&0xff;
+		code[pc++] = (ins>>16)&0x1f;
 #endif
+	} else {
+		if (pc >= sizeof(code)) {
+			if (!over) {
+				fprintf(stderr, "%d: ran out of code space\n", line-1);
+				errs++;
+				over = 1;
+			}
+			return;
+		}
+		code[pc++] = ins&0xff;
 	}
 }
 
@@ -232,6 +245,14 @@ yylex(void)
 		} else
 		if (yylval >= 0 && yylval < 256) {
 			return t_value256;
+#ifdef ASM8
+		} else 
+		if (yylval >= 0 && yylval < 4096) {
+			return t_value4096;
+		} else 
+		if (yylval >= 0 && yylval < 8192) {
+			return t_value8192;
+#endif
 		} else {
 			errs++;
 			fprintf(stderr, "%d: Invalid constant '%s'\n", line, v);
@@ -330,12 +351,18 @@ main(int argc, char **argv)
 		int found = 0;
 		for (sp = list; sp; sp=sp->next) 
 		if (rp->index == sp->index) {
+			int v;
 			found = 1;
 #ifdef ASM4
-			code[rp->offset] |= (sp->offset>>4)&0xf;
-			code[rp->offset+1] |= sp->offset&0xf;
+			v = (code[rp->offset]<<4) | code[rp->offset+1];
+			v += sp->offset;
+			code[rp->offset]   = (v>>4)&0xf;
+			code[rp->offset+1] = v&0xf;
 #else
-			code[rp->offset] |= sp->offset;
+			v = (code[rp->offset+1]<<8) | code[rp->offset];
+			v += sp->offset;
+			code[rp->offset]   = v;
+			code[rp->offset+1] = v>>8;
 #endif
 			if (!sp->found) {
 				errs++;
